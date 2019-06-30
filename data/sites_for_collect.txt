@@ -1,0 +1,10 @@
+.app
+.cc
+.pw
+.com
+.cn
+.co
+.top
+.net
+.gov.cn
+.edu.cn
