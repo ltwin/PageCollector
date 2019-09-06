@@ -2,10 +2,13 @@
 Author: lt
 Date: 2019-06-19
 Description: 根据site下载页面，可定义层级深度，只是用于收集页面，
-    出于效率的考虑，因此没有使用浏览器模拟，无法处理js动态生成的文本
+    出于效率的考虑，因此没有使用浏览器模拟，但你若搭建了splash服务器，
+    那么可以通过选项使用它来动态渲染js
 """
 
 import asyncio
+import base64
+import ctypes
 import fcntl
 import optparse
 import os
@@ -26,8 +29,9 @@ from urllib import parse
 import common as cm
 import config as conf
 import constansts as cons
-from daemon import Daemon
 
+from ahocorasick import AcAutomaton
+from daemon import Daemon
 from proxy_utils import aio_request
 from proxy_utils import request_with_proxy
 
@@ -35,34 +39,53 @@ queue = Queue()
 os.chdir(sys.path[0])
 script_path = os.path.dirname(os.path.abspath(__file__))
 
+DEFAULT_PROCESSES = 8
+
 
 def parse_args():
     """解析命令行输入"""
     usage = 'Usage: \n\tpython get_archival_info.py \n\t[-i] <input_path> \n\t[-o] ' \
-            '<output dir> \n\t[-l] <concurrent limit> \n\t[-d] <max depth each site>' \
+            '<output dir> \n\t[-c] <concurrent limit> \n\t[-p] ' \
+            '<processes num> \n\t[-d] <max depth each site>' \
             '\n\t[-D] <run as daemon> \n\t[-u] <choose one or more urls to crawl> ' \
             '\n\t[-L] <crawl level> \n\t[-S] <whether to use splash> ' \
-            '\n\t[-P] <whether to use proxy pool> \n\t[start] | restart | stop'
+            '\n\t[-P] <whether to use proxy pool> \n\t[-B] \n\t[start] | restart | stop'
     parser = optparse.OptionParser(usage=usage)
+    input_help_str = 'The path of file which contains ' \
+                     'the list of sites to be crawled'
     parser.add_option(
         '-i', '--input',
         type='str',
-        dest='input'
+        dest='input',
+        help=input_help_str
     )
+    output_help_str = 'The base output dir that stores all of the crawled results'
     parser.add_option(
         '-o', '--output',
         type='str',
-        dest='output'
+        dest='output',
+        help=output_help_str
     )
+    concurrent_help_str = 'Limit the number of concurrency of a single process'
     parser.add_option(
-        '-l', '--concurrent',
+        '-c', '--concurrent',
         type='int',
-        dest='concurrent'
+        dest='concurrent',
+        help=concurrent_help_str
     )
+    process_help_str = 'Number of processes started'
+    parser.add_option(
+        '-p', '--processes',
+        type='int',
+        dest='processes',
+        help=process_help_str
+    )
+    depth_help_str = 'Limit the max depth of pages while crawling'
     parser.add_option(
         '-d', '--depth',
         type='int',
-        dest='depth'
+        dest='depth',
+        help=depth_help_str
     )
     parser.add_option(
         '-D', '--daemon',
@@ -98,13 +121,20 @@ def parse_args():
         help=splash_help_str
     )
     proxy_help_str = 'You can add this option if you have a proxy service.' \
-                     ' When you select this option, uou will use the proxy to access the target.' \
+                     ' When you select this option, you will use the proxy to access the target.' \
                      ' But do not forget to change configuration'
     parser.add_option(
         '-P', '--proxy',
         action='store_true',
         dest='proxy',
         help=proxy_help_str
+    )
+    bs64_help_str = 'Whether to use base64 encode url as the file names'
+    parser.add_option(
+        '-B', '--bs64',
+        action='store_true',
+        dest='bs64',
+        help=bs64_help_str
     )
 
     options, args = parser.parse_args()
@@ -185,7 +215,7 @@ class Spider(object):
 
     def __init__(self, site, output_dir, semaphore,
                  max_depth=2, decode=True, display_path=True,
-                 level=0, splash=False, proxy=False):
+                 level=0, splash=False, proxy=False, bs64encode_filename=False):
         self.site = site
         self.output_dir = output_dir
         self.semaphore = semaphore
@@ -197,11 +227,21 @@ class Spider(object):
         self.level = level
         self.splash = splash
         self.proxy = proxy
+        self.bs64encode_filename = bs64encode_filename
+
         self.count = 0
         self.download_count = 0
         self.success_count = 0
         self.result_dict = {}
         self.has_crawled_pages = []
+        try:
+            self.ac = AcAutomaton(cons.USELESS_PAGE_FEATURE)
+        except Exception:
+            logger.error(
+                'Create AcAutomation failed! '
+                'The error: %s' % traceback.format_exc()
+            )
+            raise
 
     def _save(self):
         """
@@ -209,12 +249,19 @@ class Spider(object):
         :return:
         """
         for page, content in self.result_dict.items():
-            filename = page.replace('/', '{').replace(
-                ':', '}').replace('*', '[').replace('?', '^') + '.html'
+            if not content:
+                continue
+            if self.bs64encode_filename:
+                # 将url用bs64加密之后作为文件名
+                filename = base64.b64encode(
+                    page.encode('utf-8')).decode('utf-8')
+            else:
+                filename = page.replace('/', '{').replace(
+                    ':', '}').replace('*', '[').replace('?', '^')
             # 文件名不得长于linux长度限制
             if len(filename) > 255:
                 # 对于超过限制的文件名，采用md5替代
-                filename = cm.get_md5(filename) + '.html'
+                filename = cm.get_md5(filename)
             output = os.path.join(self.output_dir, filename)
             with open(output, 'w') as fw:
                 fcntl.flock(fw, fcntl.LOCK_EX)
@@ -362,6 +409,10 @@ class Spider(object):
         async with self.semaphore:
             content, page_text = await self.download_page(url)
             if not content:
+                logger.info('Ignore blank page! The url: %s' % url)
+                return
+            if self.ac.search(page_text) and len(page_text) < 1000:
+                logger.info('Ignore useless page! The url: %s' % url)
                 return
             links = self.extract_links(url, content)
             if links:
@@ -411,8 +462,11 @@ class Spider(object):
 
 def crawl_one_site(url, base_output_dir, max_depth,
                    concurrent_limit, level=0,
-                   splash=False, proxy=False):
+                   splash=False, proxy=False,
+                   bs64encode_filename=False):
     """递归下载一个站点"""
+    libc = ctypes.CDLL('libc.so.6')
+    libc.prctl(1, 15)
     semaphore = asyncio.Semaphore(value=concurrent_limit)
     domain = cm.get_host_from_url(url)
     output_dir = os.path.join(base_output_dir, domain)
@@ -425,7 +479,8 @@ def crawl_one_site(url, base_output_dir, max_depth,
         semaphore=semaphore,
         level=level,
         splash=splash,
-        proxy=proxy
+        proxy=proxy,
+        bs64encode_filename=bs64encode_filename
     )
     try:
         spider.run()
@@ -442,7 +497,8 @@ class Worker(Daemon):
     def __init__(self, urls, base_output_dir,
                  max_depth, concurrent_limit,
                  work_dir=script_path, daemon=False,
-                 level=0, splash=False, proxy=False):
+                 level=0, splash=False, proxy=False,
+                 bs64encode_filename=False, processes=None):
         self.urls = urls
         self.base_output_dir = base_output_dir
         self.max_depth = max_depth
@@ -450,6 +506,9 @@ class Worker(Daemon):
         self.level = level
         self.splash = splash
         self.proxy = proxy
+        self.bs64encode_filename = bs64encode_filename
+        self.processes = processes
+
         pid_file = os.path.join(conf.PID_DIR, 'page_collect.pid')
         super(Worker, self).__init__(pid_file, work_dir, daemon=daemon)
 
@@ -468,13 +527,15 @@ class Worker(Daemon):
             rotation='200 MB'
         )
         logger.info('Start crawler, the url list: %s' % self.urls)
-        pool = Pool(conf.PROCESS_NUM)
+        if not self.processes:
+            self.processes = DEFAULT_PROCESSES
+        pool = Pool(self.processes)
         for url in self.urls:
             pool.apply_async(
                 crawl_one_site,
                 args=(url, self.base_output_dir, self.max_depth,
                       self.concurrent_limit, self.level,
-                      self.splash, self.proxy)
+                      self.splash, self.proxy, self.bs64encode_filename)
             )
         pool.close()
         pool.join()
@@ -495,7 +556,7 @@ class Worker(Daemon):
                     ' results from it by domain'.format(os.path.abspath(self.base_output_dir)))
         logger.info("Crawl finished, total expense time: {}s, "
                     "total download: {}, success: {}, speed: "
-                    "{}".format(end_time - start_time, total_count, success_count, speed))
+                    "{}/s".format(end_time - start_time, total_count, success_count, speed))
         # 结束之后去掉pid文件
         if os.path.isfile(self._pidfile):
             os.remove(self._pidfile)
@@ -514,6 +575,7 @@ def main():
     max_depth = conf.MAX_DEPTH
     level = conf.LEVEL
     input_url = ''
+    processes = conf.PROCESS_NUM
 
     if options.concurrent is not None:
         concurrent_limit = options.concurrent
@@ -525,13 +587,15 @@ def main():
         base_output_dir = options.output
     if options.daemon is not None:
         daemon = options.daemon
+    if options.processes:
+        processes = options.processes
     if options.url is not None:
         input_url = options.url
     if options.level is not None:
         level = options.level
     use_splash = options.splash
     use_proxy = options.proxy
-
+    bs64 = options.bs64
 
     if input_url:
         url_list = [url.replace(' ', '') for url in input_url.split(',')]
@@ -545,7 +609,9 @@ def main():
         daemon=daemon,
         level=level,
         splash=use_splash,
-        proxy=use_proxy
+        proxy=use_proxy,
+        bs64encode_filename=bs64,
+        processes=processes
     )
 
     if not args:

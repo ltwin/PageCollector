@@ -50,7 +50,7 @@ async def java_script_redirect(url, page_content, headers):
     :return:
     """
     body_len_max = 100
-    url_trail, resp = '', ''
+    url_trail = ''
     target_url = url
     body_re = re.compile('<body(.*?)</body>', re.IGNORECASE | re.S)
     #script_re = re.compile('<script>(.*)</script>', re.IGNORECASE | re.S)
@@ -60,7 +60,6 @@ async def java_script_redirect(url, page_content, headers):
     redirect_re_4 = re.compile('self.location.href=\"(.*?)\"', re.IGNORECASE | re.S)
     #check if have a body less than 100chars, and a script with redirection in body
     match_body = body_re.search(page_content)
-    parse_text = ''
     if match_body:
         parse_text = match_body.groups()[0].replace('\r\n', '').strip()
     else:
@@ -81,21 +80,23 @@ async def java_script_redirect(url, page_content, headers):
         elif match_redirect_4:
             url_trail = match_redirect_4.groups()[0].strip()
         target_url = parse.urljoin(target_url, url_trail)
-        if target_url != url:
-            logger.info("Suspect java_script_redirect url"
-                        " found:{}".format(target_url))
+        if target_url == url:
+            return ''
 
         try:
             if (get_host_from_url(target_url) !=
                     get_host_from_url(url) and headers is not None):
                 headers['Host'] = get_host_from_url(target_url)
                 headers['referer'] = url
-            resp = await aiohttp.request('GET', target_url, headers=headers)
+            async with aiohttp.request('GET', target_url, headers=headers) as resp:
+                logger.info("Suspect java_script_redirect url"
+                            " found:{}".format(target_url))
+                return resp
         except Exception as err:
             logger.info("Suspect js_redirect url access failed:"
                         " {}; errmsg: {}".format(target_url,str(err)))
 
-    return resp
+    return ''
 
 
 async def java_script_redirect_location_in_js(url, page_content, headers):
@@ -107,7 +108,7 @@ async def java_script_redirect_location_in_js(url, page_content, headers):
     :return:
     """
     body_len_max = 1000
-    url_trail, resp = '', ''
+    url_trail = ''
     target_url = url
     script_re = re.compile('<script>(.*?)</script>', re.IGNORECASE | re.S)
     #script_re = re.compile('<script>(.*)</script>', re.IGNORECASE | re.S)
@@ -128,17 +129,19 @@ async def java_script_redirect_location_in_js(url, page_content, headers):
         if url_trail == '':
             return ''
         target_url = parse.urljoin(target_url, url_trail)
-        if target_url != url:
-            logger.info("Suspect java_script_redirect url found:{}".format(target_url))
+        if target_url == url:
+            return ''
 
         try:
             if get_host_from_url(target_url) != get_host_from_url(url) and headers is not None:
                 headers['Host'] = get_host_from_url(target_url)
                 headers['referer'] = url
-            resp = await aiohttp.request('GET', target_url, headers=headers)
+            async with aiohttp.request('GET', target_url, headers=headers) as resp:
+                logger.info("Suspect java_script_redirect url found:{}".format(target_url))
+                return resp
         except Exception as e:
             logger.info("Suspect js_redirect url access failed:{};errmsg:{}".format(target_url,str(e)))
-    return resp
+    return ''
 
 
 async def meta_redirect(url, page_content, headers):
@@ -153,24 +156,24 @@ async def meta_redirect(url, page_content, headers):
     meta_redirect_re_1 = re.compile('<meta[^>]*?url=(.*?)[\"\']', re.IGNORECASE| re.S)
     #redirect_re = re.compile('url=(.*)[\'\"]', re.IGNORECASE| re.S)
     target_url = url
-    resp = ""
     match_head = head_re.search(page_content)
     if match_head:
         match_meta_1 = meta_redirect_re_1.search(match_head.groups()[0])
         if match_meta_1:
             target_url = parse.urljoin(target_url, match_meta_1.groups()[0].strip())
+            if target_url == url:
+                return ''
             if get_host_from_url(target_url) != get_host_from_url(url) and headers is not None:
                 headers['Host'] = get_host_from_url(target_url)
                 headers['referer'] = url
             try:
-                resp = await aiohttp.request('GET', target_url, headers=headers)
+                async with aiohttp.request('GET', target_url, headers=headers) as resp:
+                    logger.info("Meta redirect url found:{}".format(target_url))
+                    return resp
             except Exception as err:
                 logger.warning('Get redirect page content '
                                 'from tag meta failed, err: %s' % err)
-
-    if url != target_url:
-        logger.info("Meta redirect url found:{}".format(target_url))
-    return resp
+    return ''
 
 
 async def location_replace_redirect(url, page_content, headers):
@@ -182,7 +185,7 @@ async def location_replace_redirect(url, page_content, headers):
     :param timeout:
     :return:
     """
-    url_trail ,resp = '', ''
+    url_trail = ''
     target_url = url
     head_re = re.compile('<head(.*?)</head>', re.IGNORECASE | re.S)
     head_onload_re = re.compile('window.onload(.*?)}', re.IGNORECASE | re.S)
@@ -207,16 +210,17 @@ async def location_replace_redirect(url, page_content, headers):
             elif match_head_redirect_4:
                 url_trail = match_head_redirect_4.groups()[0].strip()
             target_url = parse.urljoin(target_url, url_trail)
+            if target_url == url:
+                return ''
             try:
                 if get_host_from_url(target_url) != get_host_from_url(url) and 'Host' in headers.keys():
                     headers['Host'] = get_host_from_url(target_url)
                 if get_host_from_url(target_url) != get_host_from_url(
                         url) and 'referer' in headers.keys():
                     headers['referer'] = url
-                resp = await aiohttp.request('GET', target_url, headers=headers)
+                async with aiohttp.request('GET', target_url, headers=headers) as resp:
+                    logger.info("Location_replace redirect url found:{}".format(target_url))
+                    return resp
             except Exception as err:
                 logger.warning("Location_replace redirect access failed:{}".format(str(err)))
-
-    if url != target_url:
-        logger.info("Location_replace redirect url found:{}".format(target_url))
-    return resp
+    return ''
