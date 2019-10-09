@@ -113,7 +113,11 @@ def guess_and_decode(content):
     except Exception as err:
         logger.warning('Decoding failed, now use utf-8,'
                        ' the error: %s' % err)
-        content = content.decode('utf-8')
+        try:
+            content = content.decode('utf-8')
+        except UnicodeDecodeError:
+            logger.warning('Cannot decode the page!')
+            return ''
     return content
 
 
@@ -127,7 +131,7 @@ def is_ip(ip_str):
 
 def get_sld(url_or_domain):
     """
-    取出二级域名(泛解析域名)，比如www.test.com则取出test.com，同时忽略部分后缀的域名
+    取出二级域名，比如www.test.com则取出test.com，同时忽略部分后缀的域名
     请注意域名分类为：三级域名tieba.baidu.com，二级域名baidu.com，顶级域名.com
     :param url_or_domain: 待检测url或域名(http://www.xxx.com:80/xxx.html)
     :return:
@@ -171,7 +175,26 @@ def validate_and_fill_url(current_url, link):
                     link.split('.')[-1] in cons.PAGE_EXTENSION_LIST):
         ret = parse.urljoin(current_url, link)
     if ret:
-        logger.info('The url is invalid, now changed from'
+        logger.info('The url is incomplete, now changed from'
                     ' "{}" to "{}"'.format(link, ret))
         return ret
     return link
+
+
+def match_url(content):
+    """
+    从文本中正则匹配url
+    :param content: 待匹配文本
+    :return:
+    """
+    pattern = re.compile(
+        '((((ht|f)tps?):\/\/)?[\w\-]+(\.[\w\-]+)'
+        '+([\w\-.,@?^=%&:\/~+#]*[\w\-@?^=%&\/~+#])?)',
+        re.S
+    )
+    found_results = pattern.findall(content)
+    urls = []
+    for result in found_results:
+        url = result[0]
+        urls.append(url)
+    return urls

@@ -15,6 +15,7 @@ USER_AGENT = [
     'Mozilla/5.0+(compatible;+MSIE+9.0;+Windows+NT+6.1;+Trident/5.0);+360Spider',
     'Sogou+web+spider/4.0(+http://www.sogou.com/docs/help/webmasters.htm#07)',
 ]
+DEFAULT_REFERER = 'http://www.baidu.com/'
 
 # 不是页面链接的常见的后缀
 IGNORED_EXTENSIONS = [
@@ -48,7 +49,7 @@ IGNORED_SLD_LIST = [".ac.cn", ".com.cn", ".org.cn", ".net.cn", ".gov.cn", ".mil.
                     ".hk.cn", ".mo.cn", ".tw.cn"]
 
 # 常见的页面扩展名
-PAGE_EXTENSION_LIST = ['html', 'htm', 'php', '.asp', 'aspx', 'jsp', 'shtml', 'nsp', 'cgi']
+PAGE_EXTENSION_LIST = ['html', 'htm', 'php', 'asp', 'aspx', 'jsp', 'shtml', 'nsp', 'cgi']
 
 # 页面中包含如下语句则舍弃
 USELESS_PAGE_FEATURE = [

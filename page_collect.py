@@ -18,12 +18,12 @@ import time
 import traceback
 
 from datetime import date
+from fake_useragent import UserAgent
 from loguru import logger
 from multiprocessing import Pool
 from multiprocessing import Queue
 from multiprocessing.queues import Empty
 from pyquery import PyQuery
-from random import randint
 from urllib import parse
 
 import common as cm
@@ -73,7 +73,8 @@ def parse_args():
         dest='concurrent',
         help=concurrent_help_str
     )
-    process_help_str = 'Number of processes started'
+    process_help_str = 'Number of processes started.' \
+                       'It only makes sense when you crawl multiple urls'
     parser.add_option(
         '-p', '--processes',
         type='int',
@@ -100,6 +101,13 @@ def parse_args():
         type='str',
         dest='url',
         help=url_help_str
+    )
+    user_agent_help_str = 'Specific the access user-agent'
+    parser.add_option(
+        '-U', '--user_agent',
+        type='str',
+        dest='user_agent',
+        help=user_agent_help_str
     )
     level_help_str = 'The option "level" represents the crawler filtering level,' \
                      ' you can choose the number: 0(only contains the same domain links),' \
@@ -196,7 +204,7 @@ def parse_line(path):
     return ret
 
 
-def is_special_type_link(link):
+def is_not_special_type_link(link):
     """
     该链接是否指向特定后缀名的资源
     :param link
@@ -205,7 +213,11 @@ def is_special_type_link(link):
     if link.endswith('download/app'):
         return True
     link_extension = link.split('.')[-1]
-    return link_extension in cons.IGNORED_EXTENSIONS
+    not_in = link_extension not in cons.IGNORED_EXTENSIONS
+    if not not_in:
+        logger.info(
+            'Ignored url: {}, its type: {}'.format(link, link_extension))
+    return not_in
 
 
 class Spider(object):
@@ -214,8 +226,9 @@ class Spider(object):
     """
 
     def __init__(self, site, output_dir, semaphore,
-                 max_depth=2, decode=True, display_path=True,
-                 level=0, splash=False, proxy=False, bs64encode_filename=False):
+                 max_depth=2, decode=True, display_path=False,
+                 level=0, splash=False, proxy=False,
+                 bs64encode_filename=False, user_agent=None):
         self.site = site
         self.output_dir = output_dir
         self.semaphore = semaphore
@@ -228,10 +241,12 @@ class Spider(object):
         self.splash = splash
         self.proxy = proxy
         self.bs64encode_filename = bs64encode_filename
+        self.user_agent = user_agent
 
         self.count = 0
         self.download_count = 0
         self.success_count = 0
+        self.useless_page_count = 0
         self.result_dict = {}
         self.has_crawled_pages = []
         try:
@@ -271,11 +286,12 @@ class Spider(object):
             logger.info('All results for url: {} are saved in path: '
                         '{}'.format(self.site, self.output_dir))
 
-    def extract_links(self, url, page_content):
+    def extract_links(self, url, page_content, page_text):
         """
         解析页面内链接
         :param url: 源url
         :param page_content: 页面内容
+        :param page_text: 解码之后的页面内容
         :return:
         """
         if not page_content:
@@ -295,10 +311,6 @@ class Spider(object):
                 continue
             if href.startswith('javascript') or href.startswith('mailto'):
                 continue
-            if is_special_type_link(href):
-                logger.debug(['specail type:', href.encode('utf-8')])
-                continue
-            # real_src = get_real_src(home_url, href)
             links.add(href)
             logger.info('Get link: %s' % href)
 
@@ -314,6 +326,12 @@ class Spider(object):
             # real_iframe_src = get_real_src(url, iframe_src)
             links.add(iframe_src)
             logger.info('Get link: %s' % iframe_src)
+        # 使用正则匹配可能未解析到的url
+        extra_urls = cm.match_url(page_text)
+        for extra_url in extra_urls:
+            links.add(extra_url)
+        # 去掉不需要的后缀的链接
+        links = filter(is_not_special_type_link, links)
 
         if self.level == 0:
             current_domain = cm.get_host_from_url(url)
@@ -357,8 +375,21 @@ class Spider(object):
         else:
             rq_url = url
             rq_params = {}
-            user_agent = cons.USER_AGENT[randint(0, len(cons.USER_AGENT) - 1)]
-            headers = {'User-Agent': user_agent}
+            url_obj = parse.urlparse(rq_url)
+            if self.count == 1:
+                referer = cons.DEFAULT_REFERER
+            else:
+                referer = url_obj.scheme + url_obj.netloc
+            if not self.user_agent:
+                ua = UserAgent(use_cache_server=False, path=conf.FAKE_UA_DATA_PATH)
+                user_agent = ua.random
+            else:
+                user_agent = self.user_agent
+
+            headers = {
+                'Referer': referer,
+                'User-Agent': user_agent
+            }
         try:
             if self.proxy:
                 content, page_text = await request_with_proxy(
@@ -382,47 +413,34 @@ class Spider(object):
         self.success_count += 1
         return content, page_text
 
-    async def get_start_page(self):
-        """
-        获取起始页面及其页面中的url
-        :return:
-        """
-        content, page_text = await self.download_page(self.site)
-        if not content:
-            return []
-        if self.decode:
-            self.result_dict[self.site] = page_text
-        else:
-            self.result_dict[self.site] = content
-        self._save()
-        self.result_dict = {}
-        logger.info('Get start page for site: %s successfully!' % self.site)
-        return self.extract_links(self.site, content)
-
-    async def crawl_in_one_loop(self, tmp_links, url):
+    async def crawl_in_one_loop(self, tmp_links, url, last_one=False):
         """
         单个url爬虫
         :param tmp_links:
         :param url:
+        :param last_one: 是否为最后一个层级
         :return:
         """
         async with self.semaphore:
             content, page_text = await self.download_page(url)
             if not content:
                 logger.info('Ignore blank page! The url: %s' % url)
+                self.useless_page_count += 1
                 return
             if self.ac.search(page_text) and len(page_text) < 1000:
                 logger.info('Ignore useless page! The url: %s' % url)
+                self.useless_page_count += 1
                 return
-            links = self.extract_links(url, content)
-            if links:
-                for link in links:
-                    link_content, link_page_text = await self.download_page(link)
-                    if self.decode:
-                        self.result_dict[link] = link_page_text
-                    else:
-                        self.result_dict[link] = link_content
-                    tmp_links.add(link)
+            if self.decode:
+                self.result_dict[url] = page_text
+            else:
+                self.result_dict[url] = content
+            if not last_one:
+                # 最后一个层级不去解析页面内链接
+                links = self.extract_links(url, content, page_text)
+                if links:
+                    for link in links:
+                        tmp_links.add(link)
 
             # 保存页面到文件
             self._save()
@@ -440,30 +458,29 @@ class Spider(object):
         # 用于递归传递url
         tmp_links = set()
         tasks = []
+        last_one = False
+        if self.count > self.max_depth:
+            last_one = True
         for url in urls:
-            tasks.append(self.crawl_in_one_loop(tmp_links, url))
+            tasks.append(self.crawl_in_one_loop(tmp_links, url, last_one))
         # asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
         event_loop = asyncio.get_event_loop()
         event_loop.run_until_complete(asyncio.gather(*tasks))
 
-        if tmp_links and self.count <= self.max_depth:
+        if tmp_links:
             self.crawl(tmp_links)
 
     def run(self):
         """运行"""
-        urls_in_start_page = self.get_start_page()
-        event_loop = asyncio.get_event_loop()
-        results = event_loop.run_until_complete(asyncio.gather(urls_in_start_page))
-        result = results[0]
-        if self.max_depth > 0:
-            self.crawl(result)
-        queue.put((self.download_count, self.success_count))
+        self.crawl([self.site])
+        queue.put((self.download_count, self.success_count, self.useless_page_count))
 
 
 def crawl_one_site(url, base_output_dir, max_depth,
                    concurrent_limit, level=0,
                    splash=False, proxy=False,
-                   bs64encode_filename=False):
+                   bs64encode_filename=False,
+                   user_agent=None):
     """递归下载一个站点"""
     libc = ctypes.CDLL('libc.so.6')
     libc.prctl(1, 15)
@@ -480,7 +497,8 @@ def crawl_one_site(url, base_output_dir, max_depth,
         level=level,
         splash=splash,
         proxy=proxy,
-        bs64encode_filename=bs64encode_filename
+        bs64encode_filename=bs64encode_filename,
+        user_agent=user_agent
     )
     try:
         spider.run()
@@ -498,7 +516,8 @@ class Worker(Daemon):
                  max_depth, concurrent_limit,
                  work_dir=script_path, daemon=False,
                  level=0, splash=False, proxy=False,
-                 bs64encode_filename=False, processes=None):
+                 bs64encode_filename=False, processes=None,
+                 user_agent=None):
         self.urls = urls
         self.base_output_dir = base_output_dir
         self.max_depth = max_depth
@@ -508,6 +527,7 @@ class Worker(Daemon):
         self.proxy = proxy
         self.bs64encode_filename = bs64encode_filename
         self.processes = processes
+        self.user_agent = user_agent
 
         pid_file = os.path.join(conf.PID_DIR, 'page_collect.pid')
         super(Worker, self).__init__(pid_file, work_dir, daemon=daemon)
@@ -535,28 +555,38 @@ class Worker(Daemon):
                 crawl_one_site,
                 args=(url, self.base_output_dir, self.max_depth,
                       self.concurrent_limit, self.level,
-                      self.splash, self.proxy, self.bs64encode_filename)
+                      self.splash, self.proxy, self.bs64encode_filename,
+                      self.user_agent)
             )
         pool.close()
         pool.join()
 
         total_count = 0
         success_count = 0
+        useless_count = 0
         while True:
             try:
                 count_tuple = queue.get_nowait()
                 total_count += count_tuple[0]
-                success_count += count_tuple[-1]
+                success_count += count_tuple[1]
+                useless_count += count_tuple[2]
             except Empty:
                 break
         end_time = time.time()
         expense_time = end_time - start_time
         speed = total_count / expense_time
-        logger.info('The base output dir is: {}, you can find all'
-                    ' results from it by domain'.format(os.path.abspath(self.base_output_dir)))
-        logger.info("Crawl finished, total expense time: {}s, "
-                    "total download: {}, success: {}, speed: "
-                    "{}/s".format(end_time - start_time, total_count, success_count, speed))
+        logger.info(
+            'The base output dir is: {}, you can find all'
+            ' results from it by domain'.format(
+                os.path.abspath(self.base_output_dir))
+        )
+        logger.info(
+            "Crawl finished, total expense time: {}s, "
+            "total download: {}, success: {}, speed: {}/s".format(
+                end_time - start_time, total_count,
+                success_count, speed
+            )
+        )
         # 结束之后去掉pid文件
         if os.path.isfile(self._pidfile):
             os.remove(self._pidfile)
@@ -575,6 +605,7 @@ def main():
     max_depth = conf.MAX_DEPTH
     level = conf.LEVEL
     input_url = ''
+    user_agent = None
     processes = conf.PROCESS_NUM
 
     if options.concurrent is not None:
@@ -593,6 +624,8 @@ def main():
         input_url = options.url
     if options.level is not None:
         level = options.level
+    if options.user_agent is not None:
+        user_agent = options.user_agent
     use_splash = options.splash
     use_proxy = options.proxy
     bs64 = options.bs64
@@ -611,7 +644,8 @@ def main():
         splash=use_splash,
         proxy=use_proxy,
         bs64encode_filename=bs64,
-        processes=processes
+        processes=processes,
+        user_agent=user_agent
     )
 
     if not args:

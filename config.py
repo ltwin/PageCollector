@@ -13,8 +13,11 @@ PROCESS_NUM = 8
 CONCURRENT_LIMIT = 32
 LOG_DIR = 'log'
 TRY_TO_DECODE = True
+CRAWL_TIMEOUT = 30
 
 PID_DIR = 'pid'
+DATA_DIR = 'data'
+FAKE_UA_DATA_PATH = 'data/fake_useragent_0.1.11.json'
 DEFAULT_INPUT_PATH = 'data/sites_for_collect.txt'
 DEFAULT_OUTPUT_DIR = 'output'
 
