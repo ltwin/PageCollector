@@ -21,6 +21,7 @@ class Pipeline:
     """
     自定义数据管道，需自行编写处理方法，所有以pipe_开头的方法将被执行
     执行方法参数至少有一个，第一个参数将会被作为爬虫结果传输入口
+    注意：当使用cli命令行调用时，管道不会生效
     数据格式为：
         {
             "task": "http://www.example.com",
@@ -57,7 +58,7 @@ class Pipeline:
                 key=get_md5(url),
                 data=content
             )
-            result_id = mongo_db.update_many(
+            mongo_db.update_many(
                 coll_name=ds.RESULT_TB,
                 sfilter={'task': task, 'url': url},
                 data={
@@ -68,5 +69,4 @@ class Pipeline:
                 },
                 upsert=True
             )
-            logger.info('Save result successfully! '
-                        'The result_id: {}'.format(result_id))
+            logger.info('Save result successfully! The url: {}'.format(url))

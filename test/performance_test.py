@@ -7,7 +7,7 @@ import sys
 sys.path.append('./..')
 import cProfile
 
-from spider import crawl_one_site
+from _spider import crawl_one_site
 
 
 if __name__ == '__main__':

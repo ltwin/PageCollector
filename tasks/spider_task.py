@@ -12,7 +12,7 @@ from dramatiq.rate_limits import ConcurrentRateLimiter
 
 import config as conf
 
-from spider import crawl_one_site
+from entrance import crawl_one_site
 from tasks import settings as st
 
 
@@ -49,15 +49,47 @@ if conf.RESULT_BACKEND_DB:
 dramatiq.set_broker(redis_broker)
 
 
-def _crawler(url):
-    base_output_dir = conf.DEFAULT_OUTPUT_DIR
-    concurrent_limit = conf.CONCURRENT_LIMIT
-    max_depth = conf.MAX_DEPTH
-    level = conf.LEVEL
-    user_agent = conf.SPECIFIED_USER_AGENT
-    use_splash = conf.USE_SPLASH
-    use_proxy = conf.USE_IP_PROXY
-    bs64 = conf.BS64_FILENAME
+def _crawler(task):
+    """
+    分布式调度的爬虫执行函数
+    :param task: 爬取任务
+        可以是str类型，如：http://www.example.com
+        可以是dict类型，遵循以下格式（其中url为必选）：
+            {
+                "url": "http://www.example.com",
+                "base_output_dir": "dir/to/save",
+                "concurrent_limit": <int>,
+                "max_depth": <int>,
+                "level": 0/1/2,
+                "user_agent": "",
+                "use_splash": True/False,
+                "use_proxy": True/False,
+                "bs64": True/False
+            }
+    :return:
+    """
+    if isinstance(task, str):
+        url = task
+        base_output_dir = conf.DEFAULT_OUTPUT_DIR
+        concurrent_limit = conf.CONCURRENT_LIMIT
+        max_depth = conf.MAX_DEPTH
+        level = conf.LEVEL
+        user_agent = conf.SPECIFIED_USER_AGENT
+        use_splash = conf.USE_SPLASH
+        use_proxy = conf.USE_IP_PROXY
+        bs64 = conf.BS64_FILENAME
+    elif isinstance(task, dict):
+        url = task['url']
+        base_output_dir = task.get('base_output_dir', conf.DEFAULT_OUTPUT_DIR)
+        concurrent_limit = task.get('concurrent_limit', conf.CONCURRENT_LIMIT)
+        max_depth = task.get('max_depth', conf.MAX_DEPTH)
+        level = task.get('level', conf.LEVEL)
+        user_agent = task.get('user_agent', conf.SPECIFIED_USER_AGENT)
+        use_splash = task.get('use_splash', conf.USE_SPLASH)
+        use_proxy = task.get('use_proxy', conf.USE_IP_PROXY)
+        bs64 = task.get('bs64', conf.BS64_FILENAME)
+    else:
+        raise TypeError('Invalid task input!')
 
     if DISTRIBUTED_MUTEX:
         with DISTRIBUTED_MUTEX:
