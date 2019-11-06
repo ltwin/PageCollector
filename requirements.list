@@ -1,3 +1,4 @@
 aiohttp==3.3.2
 pyquery==1.4.0
 loguru==0.2.5
+dramatiq==1.7.0
