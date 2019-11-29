@@ -71,6 +71,10 @@ class _Spider(object):
     递归爬取批量的网站的多个子页面
     """
 
+    __ignored_domains__ = []
+    __ignored_pages__ = []
+    __ignored_slds__ = []
+
     def __init__(self, site, output_dir, semaphore,
                  max_depth=2, decode=True, display_path=False,
                  level=0, splash=False, proxy=False,
@@ -88,8 +92,9 @@ class _Spider(object):
         self.proxy = proxy
         self.bs64encode_filename = bs64encode_filename
         self.user_agent = user_agent
-        self.pipeline = None
+        self.pipelines = []
 
+        self.name = ''
         self.count = 0
         self.download_count = 0
         self.success_count = 0
@@ -107,7 +112,7 @@ class _Spider(object):
             raise
 
     def add_pipeline(self, obj):
-        self.pipeline = obj
+        self.pipelines.append(obj)
 
     def init_result_cache(self):
         self.result_dict = {
@@ -151,16 +156,17 @@ class _Spider(object):
         处理数据管道
         :return:
         """
-        if not self.pipeline:
+        if not self.pipelines:
             # 没有传入管道，那么使用默认的存储方法
             self._save()
         else:
             # 遍历管道类中的所有以pipe_开头的方法，全部调用
-            for method in dir(self.pipeline):
-                if method.startswith('pipe_'):
-                    func = getattr(self.pipeline, method)
-                    if callable(func):
-                        func(self.result_dict)
+            for pipeline in self.pipelines:
+                for method in dir(pipeline):
+                    if method.startswith('pipe_'):
+                        func = getattr(pipeline, method)
+                        if callable(func):
+                            func(self.result_dict)
 
     def extract_links(self, url, page_content, page_text):
         """
@@ -298,6 +304,15 @@ class _Spider(object):
         :return:
         """
         async with self.semaphore:
+            if self.__ignored_slds__:
+                if cm.get_sld(url) in self.__ignored_slds__:
+                    return
+            if self.__ignored_domains__:
+                if cm.get_host_from_url(url) in self.__ignored_domains__:
+                    return
+            if self.__ignored_pages__:
+                if url in self.__ignored_pages__:
+                    return
             content, page_text = await self.download_page(url)
             if not content:
                 logger.info('Ignore blank page! The url: %s' % url)

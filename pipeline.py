@@ -70,3 +70,6 @@ class Pipeline:
                 upsert=True
             )
             logger.info('Save result successfully! The url: {}'.format(url))
+
+    def pipe_export_file(self, data):
+        pass
