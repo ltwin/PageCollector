@@ -77,7 +77,8 @@ class _Spider(object):
     def __init__(self, site, output_dir, semaphore,
                  max_depth=2, decode=True, display_path=False,
                  level=0, splash=False, proxy=False,
-                 bs64encode_filename=False, user_agent=None):
+                 bs64encode_filename=False, user_agent=None,
+                 time_wait=None, timeout=5 * 60):
         self.site = site
         self.output_dir = output_dir
         self.semaphore = semaphore
@@ -91,6 +92,8 @@ class _Spider(object):
         self.proxy = proxy
         self.bs64encode_filename = bs64encode_filename
         self.user_agent = user_agent
+        self.time_wait = time_wait
+        self.timeout = timeout
         self.pipelines = []
 
         self.name = ''
@@ -282,18 +285,23 @@ class _Spider(object):
                     method='GET',
                     url=rq_url,
                     params=rq_params,
-                    headers=headers
+                    headers=headers,
+                    timeout=self.timeout
                 )
             else:
                 content, page_text = await aio_request(
                     method='GET',
                     url=rq_url,
                     params=rq_params,
-                    headers=headers
+                    headers=headers,
+                    timeout=self.timeout
                 )
-        except Exception as err:
-            logger.warning('Download page content failed, '
-                           'url: {}, error: {}'.format(url, err))
+        except Exception:
+            logger.warning(
+                'Download page content failed, '
+                'url: {}, error: {}'.format(
+                    url, traceback.format_exc())
+            )
             return '', ''
         logger.info('Download successfully, url: {}'.format(url))
         self.success_count += 1
@@ -341,6 +349,9 @@ class _Spider(object):
             self.pipe_process()
             # 保存完毕之后清空缓存结果，减少内存开销
             self.init_result_cache()
+            # 如果指定了等待时间，那么等待一段时间来降低爬虫速度
+            if self.time_wait:
+                time.sleep(self.time_wait)
 
     def crawl(self, urls):
         """

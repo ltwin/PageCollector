@@ -78,8 +78,10 @@ def kill():
               help='Specific the access user-agent')
 @click.option('--splash', '-S', type=bool, help=SPLASH_HELP_STR)
 @click.option('--proxy', '-P', type=bool, help=PROXY_HELP_STR)
+@click.option('--timeout', '-T', type=int, help='Request timeout')
+@click.option('--time_wait', type=int, help='Time wait between page download')
 def submit(source, url, concurrent_limit, depth,
-           user_agent, level, splash, proxy):
+           user_agent, level, splash, proxy, timeout, time_wait):
     """submit one or more tasks"""
     if not any([source, url]):
         raise ValueError(
@@ -114,6 +116,10 @@ def submit(source, url, concurrent_limit, depth,
             task.update({'use_splash': splash})
         if proxy is not None:
             task.update({'use_proxy': proxy})
+        if timeout is not None:
+            task.update({'timeout': timeout})
+        if time_wait is not None:
+            task.update({'time_wait': time_wait})
         tasks.append(task)
     for task in tasks:
         crawler.send(task)

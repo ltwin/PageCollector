@@ -16,7 +16,8 @@ def crawl_one_site(url, base_output_dir, max_depth,
                    concurrent_limit, level=0,
                    splash=False, proxy=False,
                    bs64encode_filename=False,
-                   user_agent=None):
+                   user_agent=None, timeout=5 * 60,
+                   time_wait=None):
     """递归下载一个站点"""
     event_loop = asyncio.new_event_loop()
     asyncio.set_event_loop(event_loop)
@@ -34,7 +35,9 @@ def crawl_one_site(url, base_output_dir, max_depth,
         splash=splash,
         proxy=proxy,
         bs64encode_filename=bs64encode_filename,
-        user_agent=user_agent
+        user_agent=user_agent,
+        timeout=timeout,
+        time_wait=time_wait
     )
     pipeline = Pipeline()
     for method in dir(pipeline):

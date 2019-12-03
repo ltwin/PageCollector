@@ -77,7 +77,9 @@ def _crawler(task):
                 "user_agent": "",
                 "use_splash": True/False,
                 "use_proxy": True/False,
-                "bs64": True/False
+                "bs64": True/False,
+                "timeout": 60,
+                "time_wait": 1
             }
     :return:
     """
@@ -91,6 +93,8 @@ def _crawler(task):
         use_splash = conf.USE_SPLASH
         use_proxy = conf.USE_IP_PROXY
         bs64 = conf.BS64_FILENAME
+        timeout = conf.CRAWL_TIMEOUT
+        time_wait = None
     elif isinstance(task, dict):
         url = task['url']
         base_output_dir = task.get('base_output_dir', conf.DEFAULT_OUTPUT_DIR)
@@ -101,6 +105,8 @@ def _crawler(task):
         use_splash = task.get('use_splash', conf.USE_SPLASH)
         use_proxy = task.get('use_proxy', conf.USE_IP_PROXY)
         bs64 = task.get('bs64', conf.BS64_FILENAME)
+        timeout = task.get('timeout', conf.CRAWL_TIMEOUT)
+        time_wait = task.get('time_wait')
     else:
         raise TypeError('Invalid task input!')
 
@@ -115,7 +121,9 @@ def _crawler(task):
                 splash=use_splash,
                 proxy=use_proxy,
                 bs64encode_filename=bs64,
-                user_agent=user_agent
+                user_agent=user_agent,
+                timeout=timeout,
+                time_wait=time_wait
             )
     else:
         crawl_one_site(
@@ -127,7 +135,9 @@ def _crawler(task):
             splash=use_splash,
             proxy=use_proxy,
             bs64encode_filename=bs64,
-            user_agent=user_agent
+            user_agent=user_agent,
+            timeout=timeout,
+            time_wait=time_wait
         )
 
 

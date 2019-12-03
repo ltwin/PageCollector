@@ -5,6 +5,7 @@ IP代理池使用前置
 import aiohttp
 import json
 
+from aiohttp import ClientTimeout
 from loguru import logger
 
 import common as cm
@@ -35,20 +36,25 @@ async def delete_proxy(proxy):
 
 
 async def aio_request(method, url, params=None, json=None,
-                      headers=None, proxy_ip=None, parse_redirect_url=True):
+                      headers=None, proxy_ip=None,
+                      parse_redirect_url=True, timeout=5 * 60):
     """
     异步请求并获取返回结果
     :param method: HTTP标准方法
     :param url: 请求url
     :param params: 请求参数
     :param json: 请求json数据
+    :param json: 请求json数据
     :param headers: 请求头
     :param proxy_ip: 代理ip
     :param parse_redirect_url: 是否解析重定向的url
+    :param timeout: 请求超时时间(单位：秒)
     :return:
     """
+    timeout_obj = ClientTimeout(total=timeout)
     async with aiohttp.request(method, url, params=params, json=json,
-                               headers=headers, proxy=proxy_ip) as resp:
+                               headers=headers, proxy=proxy_ip,
+                               timeout=timeout_obj) as resp:
         content = await resp.read()
         page_text = cm.guess_and_decode(content)
         if parse_redirect_url:
@@ -60,7 +66,8 @@ async def aio_request(method, url, params=None, json=None,
 
 
 async def request_with_proxy(method, url, params=None, json=None,
-                             headers=None, parse_redirect_url=True):
+                             headers=None, parse_redirect_url=True,
+                             timeout=5 * 60):
     """
     尝试使用代理池请求目标
     :param method: 标准http请求方法
@@ -69,6 +76,7 @@ async def request_with_proxy(method, url, params=None, json=None,
     :param json: 请求json数据
     :param headers: 请求头
     :param parse_redirect_url: 是否解析重定向url
+    :param timeout: 请求超时时间
     :return:
     """
     all_proxy_ips = await get_all_proxies()
@@ -85,7 +93,8 @@ async def request_with_proxy(method, url, params=None, json=None,
                     json=json,
                     headers=headers,
                     proxy_ip=proxy_ip,
-                    parse_redirect_url=parse_redirect_url
+                    parse_redirect_url=parse_redirect_url,
+                    timeout=timeout
                 )
             except Exception as err:
                 logger.warning('Download page content failed, now retry'
