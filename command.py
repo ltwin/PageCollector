@@ -58,7 +58,7 @@ def stop():
 
 @cli.command('kill')
 def kill():
-    """stop all workers in current machine"""
+    """kill all workers in current machine"""
     subprocess.Popen(
         "ps -ef | grep dramatiq | grep -v grep | "
         "awk '{print $2}' | xargs kill -9", shell=True
@@ -80,6 +80,7 @@ def kill():
 @click.option('--proxy', '-P', type=bool, help=PROXY_HELP_STR)
 def submit(source, url, concurrent_limit, depth,
            user_agent, level, splash, proxy):
+    """submit one or more tasks"""
     if not any([source, url]):
         raise ValueError(
             'You should at least input parameter "source" or "url"!')
@@ -123,6 +124,7 @@ def submit(source, url, concurrent_limit, depth,
 @click.option('--url', '-u', type=str)
 @click.option('--output','-o', type=str)
 def export(task, url, output):
+    """export the crawler result"""
     mongo_file = MongoFile(conf.MONGO_URI)
     export_list = find_results(task, url)
     if not export_list:
@@ -155,6 +157,7 @@ def export(task, url, output):
 @click.option('--task', '-t', type=str)
 @click.option('--url', '-u', type=str)
 def delete(task, url):
+    """delete crawler result from database"""
     mongo_file = MongoFile(conf.MONGO_URI)
     delete_list = find_results(task, url)
     if not delete_list:

@@ -3,11 +3,11 @@ import base64
 import fcntl
 import os
 import sys
+import time
 import traceback
 
 from fake_useragent import UserAgent
 from loguru import logger
-from multiprocessing import Queue
 from pyquery import PyQuery
 from urllib import parse
 
@@ -16,11 +16,10 @@ import config as conf
 import constansts as cons
 
 from ahocorasick import AcAutomaton
-from pipeline import Pipeline
 from proxy_utils import aio_request
 from proxy_utils import request_with_proxy
 
-queue = Queue()
+# queue = Queue()
 os.chdir(sys.path[0])
 script_path = os.path.dirname(os.path.abspath(__file__))
 
@@ -368,5 +367,16 @@ class _Spider(object):
 
     def run(self):
         """运行"""
+        start = time.time()
         self.crawl([self.site])
-        queue.put((self.download_count, self.success_count, self.useless_page_count))
+        end = time.time()
+        expense = end - start
+        speed = self.download_count / expense
+        logger.info(
+            'Crawl finished! The task: {}, '
+            'all pages found: {}, successfully download: {},'
+            ' expense time: {}s, speed: {}/s'.format(
+                self.site, self.download_count,
+                self.success_count, expense, speed)
+        )
+        # queue.put((self.download_count, self.success_count, self.useless_page_count))
