@@ -4,16 +4,29 @@ Date: 2019-11-05
 Desc: 爬虫调度任务
 """
 import dramatiq
+import os
 
+from datetime import date
 from dramatiq.results import Results
 from dramatiq.brokers.redis import RedisBroker
 from dramatiq.results.backends import RedisBackend
 from dramatiq.rate_limits import ConcurrentRateLimiter
+from loguru import logger
 
 import config as conf
 
 from entrance import crawl_one_site
 from tasks import settings as st
+
+
+today_str = str(date.today()).replace('-', '')
+log_path = os.path.join(conf.LOG_DIR, ''.join(['page_collect_', today_str, '.log']))
+logger.add(
+    sink=log_path,
+    level='INFO',
+    enqueue=True,
+    rotation='200 MB'
+)
 
 
 DISTRIBUTED_MUTEX = None

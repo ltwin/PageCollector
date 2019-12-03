@@ -4,6 +4,7 @@
 import click
 import json
 import os
+import subprocess
 
 from bson import ObjectId
 from json import JSONDecodeError
@@ -34,9 +35,34 @@ def cli():
     pass
 
 
-def start():
+@cli.command('start')
+@click.option('-p', '--processes', type=int,
+              help='Amount of the processes started')
+def start(processes):
     """start some workers"""
-    pass
+    if processes:
+        shell = 'nohup dramatiq -p %s tasks.spider_task > /dev/null &' % processes
+    else:
+        shell = 'nohup dramatiq tasks.spider_task > /dev/null &'
+    subprocess.Popen(shell, shell=True)
+
+
+@cli.command('stop')
+def stop():
+    """stop all workers in current machine"""
+    subprocess.Popen(
+        "ps -ef | grep dramatiq | grep -v grep | "
+        "awk '{print $2}' | xargs kill -15", shell=True
+    )
+
+
+@cli.command('kill')
+def kill():
+    """stop all workers in current machine"""
+    subprocess.Popen(
+        "ps -ef | grep dramatiq | grep -v grep | "
+        "awk '{print $2}' | xargs kill -9", shell=True
+    )
 
 
 @cli.command('submit')
@@ -97,30 +123,11 @@ def submit(source, url, concurrent_limit, depth,
 @click.option('--url', '-u', type=str)
 @click.option('--output','-o', type=str)
 def export(task, url, output):
-    if not any([task, url]):
-        print('You should at least input one of params "task" or "url"!')
-        return
-    mongo = MongoDB(conf.MONGO_URI)
     mongo_file = MongoFile(conf.MONGO_URI)
-    search_filter = {}
-    if task:
-        search_filter.update({'task': task})
-    if url:
-        search_filter.update({'url': url})
-    results, _ = mongo.find_many(
-        coll_name=dbs.RESULT_TB,
-        sfilter=search_filter,
-        sort_str='update_time'
-    )
-    if not results:
-        print('No result found!')
-    export_list = []
-    if url:
-        # 传入url表示只需要导出该url的一条事件
-        export_list.append(results[0])
-    else:
-        export_list.extend(results)
-    for result in results:
+    export_list = find_results(task, url)
+    if not export_list:
+        return
+    for result in export_list:
         ref_content_id = result.get('ref_content_id')
         url = result.get('url', 'null')
         filename = url.replace('/', '{').replace(
@@ -144,10 +151,52 @@ def export(task, url, output):
             fw.write(data)
 
 
+@cli.command('delete')
 @click.option('--task', '-t', type=str)
 @click.option('--url', '-u', type=str)
-def delete_result(task, url):
-    pass
+def delete(task, url):
+    mongo_file = MongoFile(conf.MONGO_URI)
+    delete_list = find_results(task, url)
+    if not delete_list:
+        return None
+    for result in delete_list:
+        ref_content_id = result.get('ref_content_id')
+        try:
+            mongo_file.remove_file(
+                coll_name=dbs.CONTENT_TB,
+                file_id=ObjectId(ref_content_id)
+            )
+        except Exception:
+            print('Error occurred while getting content!'
+                  ' The error: %s' % format_exc())
+
+
+
+def find_results(task=None, url=None):
+    if not any([task, url]):
+        print('You should at least input one of params "task" or "url"!')
+        return
+    mongo = MongoDB(conf.MONGO_URI)
+    search_filter = {}
+    if task:
+        search_filter.update({'task': task})
+    if url:
+        search_filter.update({'url': url})
+    results, _ = mongo.find_many(
+        coll_name=dbs.RESULT_TB,
+        sfilter=search_filter,
+        sort_str='update_time'
+    )
+    if not results:
+        print('No result found!')
+        return
+    export_list = []
+    if url:
+        # 传入url表示只需要导出该url的一条事件
+        export_list.append(results[0])
+    else:
+        export_list = results
+    return export_list
 
 
 if __name__ == '__main__':

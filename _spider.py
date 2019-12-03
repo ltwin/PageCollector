@@ -180,7 +180,12 @@ class _Spider(object):
             return set()
         links = set()
         logger.info('Extract links from page: %s' % url)
-        dom_tree = PyQuery(page_content)
+        try:
+            dom_tree = PyQuery(page_content)
+        except Exception as err:
+            logger.warning(
+                'Parse dom tree failed! The error: %s' % err)
+            return links
         if dom_tree is None:
             logger.info('Get no dom tree for url: %s' % url)
             return links
