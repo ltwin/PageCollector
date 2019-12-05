@@ -16,7 +16,7 @@ class _Pipeline(object):
         }
     """
 
+    __spider__ = None
+
     def __init__(self):
         pass
-
-    __spider__ = DEFAULT_SPIDER_NAME

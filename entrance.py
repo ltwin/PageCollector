@@ -94,7 +94,7 @@ def crawl_one_site(url, base_output_dir, max_depth,
         return
     pipelines = load_pipelines()
     for PClass in pipelines:
-        if PClass.__spider__ == spider:
+        if PClass.__spider__ == spider or PClass.__spider__ is None:
             pipeline = PClass()
             for method in dir(pipeline):
                 if method.startswith('pipe_'):
