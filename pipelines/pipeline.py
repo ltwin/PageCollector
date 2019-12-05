@@ -33,7 +33,7 @@ class Pipeline(_Pipeline):
         }
     """
 
-    __spider__ = 'spider'
+    __spiders__ = ['spider']
 
     def pipe_save2mongo(self, data):
         """
