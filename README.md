@@ -1,6 +1,6 @@
 # PageCollector
 A simple async page crawler
-## How to use
+## Simply use from cli
 * example1:
 
     You can simply run with no parameters
