@@ -69,6 +69,8 @@ def kill():
 @click.option('--source', '-s', type=str, help=
 'Specify the file path contains all of the urls which need to be crawled')
 @click.option('--url', '-u', multiple=True)
+@click.option('--name', '-N', type=str,
+              help='Specifies the name of the crawler used to crawl the page')
 @click.option('--concurrent_limit', type=int,
               help='Limit the number of concurrency of a single process')
 @click.option('--depth', '-d', type=int,
@@ -79,8 +81,10 @@ def kill():
 @click.option('--splash', '-S', type=bool, help=SPLASH_HELP_STR)
 @click.option('--proxy', '-P', type=bool, help=PROXY_HELP_STR)
 @click.option('--timeout', '-T', type=int, help='Request timeout')
-@click.option('--time_wait', type=int, help='Time wait between page download')
-def submit(source, url, concurrent_limit, depth,
+@click.option('--time_wait', type=int,
+              help='Time wait between page download. '
+                   'Used to slow down the crawler speed')
+def submit(source, url, name, concurrent_limit, depth,
            user_agent, level, splash, proxy, timeout, time_wait):
     """submit one or more tasks"""
     if not any([source, url]):
@@ -120,6 +124,8 @@ def submit(source, url, concurrent_limit, depth,
             task.update({'timeout': timeout})
         if time_wait is not None:
             task.update({'time_wait': time_wait})
+        if name is not None:
+            task.update({'spider': name})
         tasks.append(task)
     for task in tasks:
         crawler.send(task)

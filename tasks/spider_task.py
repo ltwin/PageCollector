@@ -79,7 +79,8 @@ def _crawler(task):
                 "use_proxy": True/False,
                 "bs64": True/False,
                 "timeout": 60,
-                "time_wait": 1
+                "time_wait": 1,
+                "spider": "spider_name"
             }
     :return:
     """
@@ -95,6 +96,7 @@ def _crawler(task):
         bs64 = conf.BS64_FILENAME
         timeout = conf.CRAWL_TIMEOUT
         time_wait = None
+        spider = None
     elif isinstance(task, dict):
         url = task['url']
         base_output_dir = task.get('base_output_dir', conf.DEFAULT_OUTPUT_DIR)
@@ -107,6 +109,7 @@ def _crawler(task):
         bs64 = task.get('bs64', conf.BS64_FILENAME)
         timeout = task.get('timeout', conf.CRAWL_TIMEOUT)
         time_wait = task.get('time_wait')
+        spider = task.get('spider')
     else:
         raise TypeError('Invalid task input!')
 
@@ -123,7 +126,8 @@ def _crawler(task):
                 bs64encode_filename=bs64,
                 user_agent=user_agent,
                 timeout=timeout,
-                time_wait=time_wait
+                time_wait=time_wait,
+                spider=spider
             )
     else:
         crawl_one_site(
@@ -137,7 +141,8 @@ def _crawler(task):
             bs64encode_filename=bs64,
             user_agent=user_agent,
             timeout=timeout,
-            time_wait=time_wait
+            time_wait=time_wait,
+            spider=spider
         )
 
 

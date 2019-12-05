@@ -11,13 +11,14 @@ from loguru import logger
 
 import config as conf
 
+from _pipeline import _Pipeline
 from common import get_md5
 from db_utils.mongo import MongoDB
 from db_utils.mongo import MongoFile
 from db_utils import db_settings as ds
 
 
-class Pipeline:
+class Pipeline(_Pipeline):
     """
     自定义数据管道，需自行编写处理方法，所有以pipe_开头的方法将被执行
     执行方法参数至少有一个，第一个参数将会被作为爬虫结果传输入口
@@ -31,6 +32,8 @@ class Pipeline:
             }
         }
     """
+
+    __spider__ = 'spider'
 
     def pipe_save2mongo(self, data):
         """

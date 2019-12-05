@@ -9,5 +9,7 @@ class Spider(_Spider):
     自定义爬虫类
     """
 
+    __spider__ = 'spider'
+
     def filter(self, stream):
         return stream

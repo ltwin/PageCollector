@@ -24,6 +24,7 @@ os.chdir(sys.path[0])
 script_path = os.path.dirname(os.path.abspath(__file__))
 
 DEFAULT_PROCESSES = 8
+DEFAULT_SPIDER_NAME = 'spider'
 
 
 def get_domain_from_url(url, with_type=False, with_port=False):
@@ -70,6 +71,7 @@ class _Spider(object):
     递归爬取批量的网站的多个子页面
     """
 
+    __spider__ = DEFAULT_SPIDER_NAME
     __ignored_domains__ = []
     __ignored_pages__ = []
     __ignored_slds__ = []

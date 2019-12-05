@@ -21,7 +21,9 @@ import common as cm
 import config as conf
 
 from daemon import Daemon
-from spider import Spider
+from entrance import load_pipelines
+from entrance import load_spiders
+from _spider import DEFAULT_SPIDER_NAME
 
 queue = Queue()
 # os.chdir(sys.path[0])
@@ -132,6 +134,26 @@ def parse_args():
         dest='bs64',
         help=bs64_help_str
     )
+    parser.add_option(
+        '-T', '--timeout',
+        type='int',
+        dest='timeout',
+        help='Download request timeout'
+    )
+    parser.add_option(
+        '--time_wait',
+        type='int',
+        dest='time_wait',
+        help='Time wait between page download. '
+             'Used to slow down the crawler speed'
+    )
+    name_help_str = 'Specifies the name of the crawler used to crawl the page'
+    parser.add_option(
+        '-N', '--name',
+        type='str',
+        dest='name',
+        help=name_help_str
+    )
 
     options, args = parser.parse_args()
     return options, args
@@ -141,28 +163,53 @@ def crawl_one_site(url, base_output_dir, max_depth,
                    concurrent_limit, level=0,
                    splash=False, proxy=False,
                    bs64encode_filename=False,
-                   user_agent=None):
+                   user_agent=None, timeout=5 * 60,
+                   time_wait=None, spider=None):
     """递归下载一个站点"""
     libc = ctypes.CDLL('libc.so.6')
     libc.prctl(1, 15)
+    event_loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(event_loop)
     semaphore = asyncio.Semaphore(value=concurrent_limit)
     domain = cm.get_host_from_url(url)
     output_dir = os.path.join(base_output_dir, domain)
     if not os.path.isdir(output_dir):
         os.system('mkdir -p %s' % output_dir)
-    spider = Spider(
-        site=url,
-        output_dir=output_dir,
-        max_depth=max_depth,
-        semaphore=semaphore,
-        level=level,
-        splash=splash,
-        proxy=proxy,
-        bs64encode_filename=bs64encode_filename,
-        user_agent=user_agent
-    )
+    if not spider:
+        spider = DEFAULT_SPIDER_NAME
+    spiders = load_spiders()
+    spider_obj = None
+    for SClass in spiders:
+        if SClass.__spider__ == spider:
+            spider_obj = SClass(
+                site=url,
+                output_dir=output_dir,
+                max_depth=max_depth,
+                semaphore=semaphore,
+                level=level,
+                splash=splash,
+                proxy=proxy,
+                bs64encode_filename=bs64encode_filename,
+                user_agent=user_agent,
+                timeout=timeout,
+                time_wait=time_wait
+            )
+            break
+    if not spider_obj:
+        logger.warning('No spider matched for url: {}, '
+                       'whose s_name is: {}'.format(url, spider))
+        return
+    pipelines = load_pipelines()
+    for PClass in pipelines:
+        if PClass.__spider__ == spider:
+            pipeline = PClass()
+            for method in dir(pipeline):
+                if method.startswith('pipe_'):
+                    # 拥有可执行管道方法则添加管道
+                    spider_obj.add_pipeline(pipeline)
+                    break
     try:
-        spider.run()
+        spider_obj.run()
     except:
         logger.error('Error occurred while running: '
                      '{}'.format(traceback.format_exc()))
@@ -178,7 +225,8 @@ class Worker(Daemon):
                  work_dir=script_path, daemon=False,
                  level=0, splash=False, proxy=False,
                  bs64encode_filename=False, processes=None,
-                 user_agent=None):
+                 user_agent=None, timeout=5 * 60,
+                 time_wait=None, spider=None):
         self.urls = urls
         self.base_output_dir = base_output_dir
         self.max_depth = max_depth
@@ -189,6 +237,9 @@ class Worker(Daemon):
         self.bs64encode_filename = bs64encode_filename
         self.processes = processes
         self.user_agent = user_agent
+        self.timeout = timeout
+        self.time_wait = time_wait
+        self.spider = spider
 
         pid_file = os.path.join(conf.PID_DIR, 'page_collect.pid')
         super(Worker, self).__init__(pid_file, work_dir, daemon=daemon)
@@ -217,7 +268,7 @@ class Worker(Daemon):
                 args=(url, self.base_output_dir, self.max_depth,
                       self.concurrent_limit, self.level,
                       self.splash, self.proxy, self.bs64encode_filename,
-                      self.user_agent)
+                      self.user_agent, self.timeout, self.time_wait, self.spider)
             )
         pool.close()
         pool.join()
@@ -299,6 +350,9 @@ def main():
     input_url = ''
     user_agent = None
     processes = conf.PROCESS_NUM
+    timeout = conf.CRAWL_TIMEOUT
+    time_wait = None
+    name = None
 
     if options.concurrent is not None:
         concurrent_limit = options.concurrent
@@ -316,6 +370,12 @@ def main():
         level = options.level
     if options.user_agent is not None:
         user_agent = options.user_agent
+    if options.timeout is not None:
+        timeout = options.timeout
+    if options.time_wait is not None:
+        time_wait = options.time_wait
+    if options.name is not None:
+        name = options.name
     daemon = options.daemon
     use_splash = options.splash
     use_proxy = options.proxy
@@ -336,7 +396,10 @@ def main():
         proxy=use_proxy,
         bs64encode_filename=bs64,
         processes=processes,
-        user_agent=user_agent
+        user_agent=user_agent,
+        timeout=timeout,
+        time_wait=time_wait,
+        spider=name
     )
 
     if not args:
