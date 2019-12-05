@@ -63,7 +63,8 @@ For starting some workers,you can run:
     ```
     **Important**:
     
-    You'd better specify the name of the crawler when submitting the task, otherwise the program will use the default name, 'Spider'
+    You'd better specify the name of the crawler when submitting the task, otherwise the program will use the default name 'spider'
+    
     Like this:
     ```bash
     python command.py -u "http://www.example.com" -N "spider_name"
