@@ -10,4 +10,4 @@ MIN_BACKOFF = 15000
 # 限制任务的并发数，为空则不限制
 CONCURRENT_LIMIT = None
 # 限制执行超时时间，设置为None则无限制，单位ms
-TIME_LIMIT = 1800000
+TIME_LIMIT = 3600000

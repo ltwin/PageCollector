@@ -19,7 +19,7 @@ from ahocorasick import AcAutomaton
 from proxy_utils import aio_request
 from proxy_utils import request_with_proxy
 
-# queue = Queue()
+queue = Queue()
 os.chdir(sys.path[0])
 script_path = os.path.dirname(os.path.abspath(__file__))
 
@@ -392,4 +392,4 @@ class _Spider(object):
                 self.site, self.download_count,
                 self.success_count, expense, speed)
         )
-        # queue.put((self.download_count, self.success_count, self.useless_page_count))
+        queue.put((self.download_count, self.success_count, self.useless_page_count))
