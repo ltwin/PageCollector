@@ -8,6 +8,7 @@ import traceback
 
 from fake_useragent import UserAgent
 from loguru import logger
+from multiprocessing import Queue
 from pyquery import PyQuery
 from urllib import parse
 
