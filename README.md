@@ -1,5 +1,5 @@
 # PageCollector
-A simple async page crawler
+A distributed async page crawler
 ## Simply use from cli
 * example1:
 
