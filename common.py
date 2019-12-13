@@ -3,12 +3,29 @@
 """
 import chardet
 import hashlib
+import os
 import re
+import sys
 
+from datetime import date
 from loguru import logger
 from urllib import parse
 
+import config as conf
 import constansts as cons
+
+
+def init_logger():
+    today_str = str(date.today()).replace('-', '')
+    log_path = os.path.join(
+        conf.LOG_DIR, ''.join(['page_collect_', today_str, '.log']))
+    log_config = {
+        "handlers": [
+            {"sink": sys.stdout, "format": cons.LOG_FORMAT},
+            {"sink": log_path, "format": cons.LOG_FORMAT, "enqueue": True},
+        ]
+    }
+    logger.configure(**log_config)
 
 
 def get_md5(content):

@@ -4,29 +4,17 @@ Date: 2019-11-05
 Desc: 爬虫调度任务
 """
 import dramatiq
-import os
 
-from datetime import date
 from dramatiq.results import Results
 from dramatiq.brokers.redis import RedisBroker
 from dramatiq.results.backends import RedisBackend
 from dramatiq.rate_limits import ConcurrentRateLimiter
-from loguru import logger
 
 import config as conf
 
+from common import init_logger
 from entrance import crawl_one_site
 from tasks import settings as st
-
-
-today_str = str(date.today()).replace('-', '')
-log_path = os.path.join(conf.LOG_DIR, ''.join(['page_collect_', today_str, '.log']))
-logger.add(
-    sink=log_path,
-    level='INFO',
-    enqueue=True,
-    rotation='200 MB'
-)
 
 
 DISTRIBUTED_MUTEX = None
@@ -84,6 +72,7 @@ def _crawler(task):
             }
     :return:
     """
+    init_logger()
     if isinstance(task, str):
         url = task
         base_output_dir = conf.DEFAULT_OUTPUT_DIR
@@ -158,7 +147,7 @@ def on_failure():
     max_age=st.MAX_AGE,
     max_retries=st.MAX_RETRIES, min_backoff=st.MIN_BACKOFF,
     time_limit=st.TIME_LIMIT)
-def ont_success():
+def on_success():
     pass
 
 

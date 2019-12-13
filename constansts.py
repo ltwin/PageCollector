@@ -2,6 +2,12 @@
 常量
 """
 
+# Log format
+LOG_FORMAT = "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> |" \
+             " <level>{level: <8}</level> | <cyan>{name}</cyan>:" \
+             "<cyan>{function}</cyan>:<cyan>{line}</cyan> - " \
+             "<level>{message}</level>"
+
 # 常见user-agent
 USER_AGENT = [
     'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36',

@@ -76,6 +76,8 @@ class _Spider(object):
     __ignored_domains__ = []
     __ignored_pages__ = []
     __ignored_slds__ = []
+    before_request_middleware = []
+    after_request_middleware = []
 
     def __init__(self, site, output_dir, semaphore,
                  max_depth=2, decode=True, display_path=False,
@@ -115,6 +117,21 @@ class _Spider(object):
                 'The error: %s' % traceback.format_exc()
             )
             raise
+
+    def add_middleware(self, action, func):
+        pass
+
+    @classmethod
+    def before_request(cls, func):
+        def wrapper():
+            cls.before_request_middleware.append(func)
+        wrapper()
+
+    @classmethod
+    def after_request(cls, func):
+        def wrapper():
+            cls.after_request_middleware.append(func)
+        wrapper()
 
     def add_pipeline(self, obj):
         self.pipelines.append(obj)
