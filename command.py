@@ -17,7 +17,6 @@ from db_utils.mongo import MongoDB
 from db_utils.mongo import MongoFile
 from db_utils import db_settings as dbs
 
-
 LEVEL_HELP_STR = 'The option "level" represents the crawler filtering level,' \
                  ' you can choose the number: 0(only contains the same domain links),' \
                  ' 1(contains the same links for secondary domains),' \
@@ -66,8 +65,8 @@ def kill():
 
 
 @cli.command('submit')
-@click.option('--source', '-s', type=str, help=
-'Specify the file path contains all of the urls which need to be crawled')
+@click.option('--source', '-s', type=str, help='Specify the file path contains'
+                                               ' all of the urls which need to be crawled')
 @click.option('--url', '-u', multiple=True)
 @click.option('--name', '-N', type=str,
               help='Specifies the name of the crawler used to crawl the page')
@@ -134,7 +133,7 @@ def submit(source, url, name, concurrent_limit, depth,
 @cli.command('export')
 @click.option('--task', '-t', type=str)
 @click.option('--url', '-u', type=str)
-@click.option('--output','-o', type=str)
+@click.option('--output', '-o', type=str)
 def export(task, url, output):
     """export the crawler result"""
     mongo_file = MongoFile(conf.MONGO_URI)
@@ -184,7 +183,6 @@ def delete(task, url):
         except Exception:
             print('Error occurred while getting content!'
                   ' The error: %s' % format_exc())
-
 
 
 def find_results(task=None, url=None):

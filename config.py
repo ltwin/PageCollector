@@ -20,7 +20,7 @@ SPECIFIED_USER_AGENT = None
 
 PID_DIR = 'pid'
 DATA_DIR = 'data'
-FAKE_UA_DATA_PATH = '/saas/tools/page_collector/data/fake_useragent_0.1.11.json'
+FAKE_UA_DATA_PATH = 'data/fake_useragent_0.1.11.json'
 DEFAULT_INPUT_PATH = 'data/sites_for_collect.txt'
 DEFAULT_OUTPUT_DIR = 'output'
 # 是否使用bs64编码的url作为文件名（只在使用默认文件存储数据管道时生效）
@@ -46,15 +46,15 @@ DELETE_PROXY_IP_URL = IP_PROXY_URL + '/delete'
 
 # ------------Redis相关设置---------------
 REDIS_HOST = 'localhost'
-REDIS_PORT = 11984
-REDIS_PWD = 'Sangfor@2018@bjsec@hell0w0rld'
-BROKER_DB = 10
+REDIS_PORT = 6379
+REDIS_PWD = 'sangfor'
+BROKER_DB = 1
 RESULT_BACKEND_DB = None
 
 # ------------Mongo相关设置----------------
 MONGO_USER = 'root'
-MONGO_PWD = quote_plus('Dev@Mongo#1105')
-MONGO_HOSTS = '10.251.1.104:27017'
+MONGO_PWD = quote_plus('sangfor')
+MONGO_HOSTS = '127.0.0.1:27017'
 AUTH_DB = 'admin'
 MONGO_URI = 'mongodb://{}:{}@{}/?authSource={}'.format(
     MONGO_USER, MONGO_PWD, MONGO_HOSTS, AUTH_DB)

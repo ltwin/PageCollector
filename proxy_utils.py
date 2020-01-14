@@ -52,17 +52,17 @@ async def aio_request(method, url, params=None, json=None,
     :return:
     """
     timeout_obj = ClientTimeout(total=timeout)
-    async with aiohttp.request(method, url, params=params, json=json,
-                               headers=headers, proxy=proxy_ip,
-                               timeout=timeout_obj) as resp:
-        content = await resp.read()
-        page_text = cm.guess_and_decode(content)
-        if parse_redirect_url:
-            redirect_resp = await redirect(url, page_text, headers=headers)
-            if redirect_resp:
-                content = await redirect_resp.read()
-                page_text = cm.guess_and_decode(content)
-        return content, page_text
+    async with aiohttp.ClientSession(timeout=timeout_obj) as session:
+        async with session.get(url, timeout=timeout_obj, params=params, json=json,
+                               headers=headers, proxy=proxy_ip, verify_ssl=False) as resp:
+            content = await resp.read()
+            page_text = cm.guess_and_decode(content)
+            if parse_redirect_url:
+                redirect_resp = await redirect(url, page_text, headers=headers)
+                if redirect_resp:
+                    content = await redirect_resp.read()
+                    page_text = cm.guess_and_decode(content)
+            return content, page_text
 
 
 async def request_with_proxy(method, url, params=None, json=None,
