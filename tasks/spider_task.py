@@ -4,6 +4,7 @@ Date: 2019-11-05
 Desc: 爬虫调度任务
 """
 import dramatiq
+import os
 
 from dramatiq.results import Results
 from dramatiq.brokers.redis import RedisBroker
@@ -12,10 +13,12 @@ from dramatiq.rate_limits import ConcurrentRateLimiter
 
 import config as conf
 
-from common import init_logger
 from entrance import crawl_one_site
+from logger import init_logger
 from tasks import settings as st
 
+
+init_logger(os.path.join(conf.LOG_DIR, 'page_collect.log'))
 
 DISTRIBUTED_MUTEX = None
 if st.CONCURRENT_LIMIT:
@@ -72,7 +75,6 @@ def _crawler(task):
             }
     :return:
     """
-    init_logger()
     if isinstance(task, str):
         url = task
         base_output_dir = conf.DEFAULT_OUTPUT_DIR

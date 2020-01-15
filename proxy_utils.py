@@ -44,7 +44,6 @@ async def aio_request(method, url, params=None, json=None,
     :param url: 请求url
     :param params: 请求参数
     :param json: 请求json数据
-    :param json: 请求json数据
     :param headers: 请求头
     :param proxy_ip: 代理ip
     :param parse_redirect_url: 是否解析重定向的url
