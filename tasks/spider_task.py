@@ -105,7 +105,7 @@ def _crawler(task):
         raise TypeError('Invalid task input!')
 
     if DISTRIBUTED_MUTEX:
-        with DISTRIBUTED_MUTEX:
+        with DISTRIBUTED_MUTEX.acquire():
             crawl_one_site(
                 url=url,
                 base_output_dir=base_output_dir,
