@@ -52,8 +52,9 @@ async def aio_request(method, url, params=None, json=None,
     """
     timeout_obj = ClientTimeout(total=timeout)
     async with aiohttp.ClientSession(timeout=timeout_obj) as session:
-        async with session.get(url, timeout=timeout_obj, params=params, json=json,
-                               headers=headers, proxy=proxy_ip, verify_ssl=False) as resp:
+        async with getattr(session, method.lower())(
+                url, timeout=timeout_obj, params=params, json=json,
+                headers=headers, proxy=proxy_ip, verify_ssl=False) as resp:
             content = await resp.read()
             page_text = cm.guess_and_decode(content)
             if parse_redirect_url:
