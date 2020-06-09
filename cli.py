@@ -25,7 +25,8 @@ from entrance import load_pipelines
 from entrance import load_spiders
 from _spider import DEFAULT_SPIDER_NAME
 
-queue = Queue()
+message_queue = Queue()
+urls_queue = Queue()
 # os.chdir(sys.path[0])
 script_path = os.path.dirname(os.path.abspath(__file__))
 
@@ -159,60 +160,101 @@ def parse_args():
     return options, args
 
 
-def crawl_one_site(url, base_output_dir, max_depth,
-                   concurrent_limit, level=0,
-                   splash=False, proxy=False,
-                   bs64encode_filename=False,
-                   user_agent=None, timeout=5 * 60,
-                   time_wait=None, spider=None):
+async def crawl_one_site(semaphore, base_output_dir,
+                         max_depth, level=0,
+                         splash=False, proxy=False,
+                         bs64encode_filename=False,
+                         user_agent=None, timeout=5 * 60,
+                         time_wait=None, spider=None):
     """递归下载一个站点"""
     libc = ctypes.CDLL('libc.so.6')
     libc.prctl(1, 15)
-    event_loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(event_loop)
-    semaphore = asyncio.Semaphore(value=concurrent_limit)
-    domain = cm.get_host_from_url(url)
-    output_dir = os.path.join(base_output_dir, domain)
-    if not os.path.isdir(output_dir):
-        os.system('mkdir -p %s' % output_dir)
-    if not spider:
-        spider = DEFAULT_SPIDER_NAME
-    spiders = load_spiders()
-    spider_obj = None
-    for SClass in spiders:
-        if SClass.__spider__ == spider:
-            spider_obj = SClass(
-                site=url,
-                output_dir=output_dir,
-                max_depth=max_depth,
-                semaphore=semaphore,
-                level=level,
-                splash=splash,
-                proxy=proxy,
-                bs64encode_filename=bs64encode_filename,
-                user_agent=user_agent,
-                timeout=timeout,
-                time_wait=time_wait
+    # event_loop = asyncio.new_event_loop()
+    # asyncio.set_event_loop(event_loop)
+    # semaphore = asyncio.Semaphore(value=concurrent_limit)
+    while True:
+        try:
+            url = urls_queue.get(block=False)
+        except Empty:
+            return
+        print(url)
+        domain = cm.get_host_from_url(url)
+        output_dir = os.path.join(base_output_dir, domain)
+        if not os.path.isdir(output_dir):
+            os.system('mkdir -p %s' % output_dir)
+        if not spider:
+            spider = DEFAULT_SPIDER_NAME
+        spiders = load_spiders()
+        spider_obj = None
+        for SClass in spiders:
+            if SClass.__spider__ == spider:
+                spider_obj = SClass(
+                    site=url,
+                    output_dir=output_dir,
+                    max_depth=max_depth,
+                    semaphore=semaphore,
+                    level=level,
+                    splash=splash,
+                    proxy=proxy,
+                    bs64encode_filename=bs64encode_filename,
+                    user_agent=user_agent,
+                    timeout=timeout,
+                    time_wait=time_wait
+                )
+                break
+        if not spider_obj:
+            logger.warning('No spider matched for url: {}, '
+                           'whose s_name is: {}'.format(url, spider))
+            return
+        pipelines = load_pipelines()
+        for PClass in pipelines:
+            if PClass.__spider__ == spider:
+                pipeline = PClass()
+                for method in dir(pipeline):
+                    if method.startswith('pipe_'):
+                        # 拥有可执行管道方法则添加管道
+                        spider_obj.add_pipeline(pipeline)
+                        break
+        try:
+            await spider_obj.run()
+        except:
+            logger.error('Error occurred while running: '
+                         '{}'.format(traceback.format_exc()))
+
+
+async def run_concurrent(semaphore, base_output_dir,
+                         max_depth, level=0,
+                         splash=False, proxy=False,
+                         bs64encode_filename=False,
+                         user_agent=None, timeout=5 * 60,
+                         time_wait=None, spider=None):
+    tasks = []
+    for idx in range(1024):
+        tasks.append(
+            crawl_one_site(
+                semaphore, base_output_dir, max_depth, level,
+                splash, proxy, bs64encode_filename,
+                user_agent, timeout, time_wait, spider
             )
-            break
-    if not spider_obj:
-        logger.warning('No spider matched for url: {}, '
-                       'whose s_name is: {}'.format(url, spider))
-        return
-    pipelines = load_pipelines()
-    for PClass in pipelines:
-        if PClass.__spider__ == spider:
-            pipeline = PClass()
-            for method in dir(pipeline):
-                if method.startswith('pipe_'):
-                    # 拥有可执行管道方法则添加管道
-                    spider_obj.add_pipeline(pipeline)
-                    break
-    try:
-        spider_obj.run()
-    except:
-        logger.error('Error occurred while running: '
-                     '{}'.format(traceback.format_exc()))
+        )
+    await asyncio.gather(*tasks)
+
+
+def entrance(concurrent, base_output_dir,
+             max_depth, level=0,
+             splash=False, proxy=False,
+             bs64encode_filename=False,
+             user_agent=None, timeout=5 * 60,
+             time_wait=None, spider=None):
+    event_loop = asyncio.get_event_loop()
+    semaphore = asyncio.Semaphore(concurrent)
+    event_loop.run_until_complete(
+        run_concurrent(
+            semaphore, base_output_dir, max_depth, level,
+            splash, proxy, bs64encode_filename,
+            user_agent, timeout, time_wait, spider
+        )
+    )
 
 
 class Worker(Daemon):
@@ -259,17 +301,30 @@ class Worker(Daemon):
             rotation='200 MB'
         )
         logger.info('Start crawler, the url list: %s' % self.urls)
+        for url in self.urls:
+            urls_queue.put(url)
         if not self.processes:
             self.processes = DEFAULT_PROCESSES
         pool = Pool(self.processes)
-        for url in self.urls:
+        for idx in range(self.processes):
             pool.apply_async(
-                crawl_one_site,
-                args=(url, self.base_output_dir, self.max_depth,
-                      self.concurrent_limit, self.level,
-                      self.splash, self.proxy, self.bs64encode_filename,
-                      self.user_agent, self.timeout, self.time_wait, self.spider)
+                entrance,
+                args=(self.concurrent_limit,
+                      self.base_output_dir,
+                      self.max_depth, self.level,
+                      self.splash, self.proxy,
+                      self.bs64encode_filename,
+                      self.user_agent, self.timeout,
+                      self.time_wait, self.spider)
             )
+        # for url in self.urls:
+        #     pool.apply_async(
+        #         crawl_one_site,
+        #         args=(url, self.base_output_dir, self.max_depth,
+        #               self.concurrent_limit, self.level,
+        #               self.splash, self.proxy, self.bs64encode_filename,
+        #               self.user_agent, self.timeout, self.time_wait, self.spider)
+        #     )
         pool.close()
         pool.join()
 
@@ -278,7 +333,7 @@ class Worker(Daemon):
         useless_count = 0
         while True:
             try:
-                count_tuple = queue.get_nowait()
+                count_tuple = message_queue.get_nowait()
                 total_count += count_tuple[0]
                 success_count += count_tuple[1]
                 useless_count += count_tuple[2]

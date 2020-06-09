@@ -1,5 +1,6 @@
 import asyncio
 import base64
+from datetime import datetime
 import fcntl
 import os
 import sys
@@ -109,6 +110,10 @@ class _Spider(object):
         self.result_dict = None
         self.has_crawled_pages = []
         self.init_result_cache()
+        self.record_path = os.path.join(
+            os.path.abspath(os.path.join(self.output_dir, '..')),
+            'record.txt'
+        )
         try:
             self.ac = AcAutomaton(cons.USELESS_PAGE_FEATURE)
         except Exception:
@@ -322,7 +327,7 @@ class _Spider(object):
                 'url: {}, error: {}'.format(
                     url, traceback.format_exc())
             )
-            return '', ''
+            raise
         logger.info('Download successfully, url: {}'.format(url))
         self.success_count += 1
         return content, page_text
@@ -345,7 +350,22 @@ class _Spider(object):
             if self.__ignored_pages__:
                 if url in self.__ignored_pages__:
                     return
-            content, page_text = await self.download_page(url)
+            try:
+                content, page_text = await self.download_page(url)
+            except Exception:
+                # 记录错误信息
+                logger.info('Cache failed info...')
+                with open(self.record_path, 'a') as fa:
+                    fcntl.flock(fa, fcntl.LOCK_EX)
+                    fa.write('Failed: %s\n' % url)
+                    fcntl.flock(fa, fcntl.LOCK_UN)
+                    return
+            # 记录成功的url
+            with open(self.record_path, 'a') as fa:
+                fcntl.flock(fa, fcntl.LOCK_EX)
+                fa.write('Success: %s\n' % url)
+                fcntl.flock(fa, fcntl.LOCK_UN)
+
             if not content:
                 logger.info('Ignore blank page! The url: %s' % url)
                 self.useless_page_count += 1
@@ -373,7 +393,7 @@ class _Spider(object):
             if self.time_wait:
                 time.sleep(self.time_wait)
 
-    def crawl(self, urls):
+    async def crawl(self, urls):
         """
         爬取一个站点下的多个链接页面
         :param urls: url列表
@@ -389,17 +409,15 @@ class _Spider(object):
             last_one = True
         for url in urls:
             tasks.append(self.crawl_in_one_loop(tmp_links, url, last_one))
-        # asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-        event_loop = asyncio.get_event_loop()
-        event_loop.run_until_complete(asyncio.gather(*tasks))
+        await asyncio.gather(*tasks)
 
         if tmp_links:
-            self.crawl(tmp_links)
+            await self.crawl(tmp_links)
 
-    def run(self):
+    async def run(self):
         """运行"""
         start = time.time()
-        self.crawl([self.site])
+        await self.crawl([self.site])
         end = time.time()
         expense = end - start
         speed = self.download_count / expense
